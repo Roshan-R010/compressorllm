@@ -1,18 +1,12 @@
-from sentence_transformers import SentenceTransformer
 import chromadb
-from chromadb.config import Settings
+
+from backend.cache.embeddings import embed_text
+from backend.cache.threshold_config import DEFAULT_THRESHOLD, DISTANCE_METRIC
 
 # ---------------------------------------------------------------------------
-# 1. Load the embedding model once at import time.
-#    all-MiniLM-L6-v2 is small, fast, and good enough for semantic similarity
-#    of short questions. Loading it once avoids reloading on every call.
-# ---------------------------------------------------------------------------
-model = SentenceTransformer("all-MiniLM-L6-v2")
-
-# ---------------------------------------------------------------------------
-# 2. Set up ChromaDB. We use a persistent client so the cache survives
-#    restarts (stored on disk in ./chroma_db). Swap for chromadb.Client()
-#    if you only want an in-memory cache.
+# Set up ChromaDB. We use a persistent client so the cache survives
+# restarts (stored on disk in ./chroma_db). Swap for chromadb.Client()
+# if you only want an in-memory cache.
 # ---------------------------------------------------------------------------
 chroma_client = chromadb.PersistentClient(path="./chroma_db")
 
@@ -20,7 +14,7 @@ chroma_client = chromadb.PersistentClient(path="./chroma_db")
 # doesn't error out if it already exists.
 collection = chroma_client.get_or_create_collection(
     name="semantic_cache",
-    metadata={"hnsw:space": "cosine"},  # cosine similarity works well for text embeddings
+    metadata={"hnsw:space": DISTANCE_METRIC},
 )
 
 # Chroma needs unique string IDs per entry. We just keep an incrementing counter.
@@ -29,16 +23,15 @@ _next_id = collection.count()
 
 def add_to_cache(question: str, answer: str) -> None:
     """
-    Embed `question` and store it in ChromaDB alongside its `answer`.
+    Embed `question` (via embeddings.py) and store it in ChromaDB alongside
+    its `answer`.
 
     The answer is stored in the `metadatas` field (Chroma only indexes
     embeddings/documents for search; metadata is just attached payload).
     """
     global _next_id
 
-    # Turn the question into a vector. .tolist() because Chroma wants
-    # plain Python lists, not numpy arrays.
-    embedding = model.encode(question).tolist()
+    embedding = embed_text(question)
 
     entry_id = str(_next_id)
     _next_id += 1
@@ -46,23 +39,25 @@ def add_to_cache(question: str, answer: str) -> None:
     collection.add(
         ids=[entry_id],
         embeddings=[embedding],
-        documents=[question],          # the original question text (for debugging/inspection)
-        metadatas=[{"answer": answer}],  # the cached answer, retrievable on lookup
+        documents=[question],            # original question text (for debugging/inspection)
+        metadatas=[{"answer": answer}],  # cached answer, retrievable on lookup
     )
 
 
-def search_cache(question: str, threshold: float = 0.85):
+def search_cache(question: str, threshold: float = DEFAULT_THRESHOLD):
     """
     Embed `question`, find the most similar stored question, and return its
     cached answer if similarity >= threshold. Otherwise return None.
 
     threshold is a similarity score in [0, 1], where 1 = identical meaning.
+    Defaults to DEFAULT_THRESHOLD from threshold_config.py, but callers can
+    override it (e.g. pass LOOSE_THRESHOLD or STRICT_THRESHOLD).
     """
     # Nothing stored yet -> nothing to match against.
     if collection.count() == 0:
         return None
 
-    query_embedding = model.encode(question).tolist()
+    query_embedding = embed_text(question)
 
     # Ask Chroma for the single closest match (n_results=1).
     results = collection.query(
@@ -96,6 +91,8 @@ def get_cache_size() -> int:
 #   python vector_store.py
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
+    from threshold_config import LOOSE_THRESHOLD
+
     print("Adding 3 example questions to cache...\n")
 
     add_to_cache("What is AI?", "AI stands for Artificial Intelligence.")
@@ -113,14 +110,14 @@ if __name__ == "__main__":
     # Reworded versions of the same 3 questions — should still hit the cache
     # if the embeddings + threshold are working correctly.
     test_queries = [
-        "Explain artificial intelligence",          # reword of Q1
+        "Explain artificial intelligence",           # reword of Q1
         "How can I reverse the order of a list?",    # reword of Q2
         "Which city is France's capital?",           # reword of Q3
         "What's the weather like today?",             # unrelated — should MISS
     ]
 
     for query in test_queries:
-        result = search_cache(query, threshold=0.75)
+        result = search_cache(query, threshold=LOOSE_THRESHOLD)
         print(f"Query: {query!r}")
         if result:
             print(f"  -> CACHE HIT: {result}")
