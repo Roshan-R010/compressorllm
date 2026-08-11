@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ProxyLLM - Minimal Semantic Cache & Proxy</title>
+  
+  <!-- Typography: Libre Baskerville -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Libre+Baskerville:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+
+  <style>
+    :root {
+      --bg: #F5F5F5;
+      --card: #1A1D25;
+      --accent: #0284C7;
+      --text: #0D0E12;
+      --muted: #6B7280;
+      --border: #E0E0E0;
+      --font: 'Libre Baskerville', Georgia, serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.6;
+    }
+
+    /* Top Navigation */
+    header {
+      background-color: #FFFFFF;
+      border-bottom: 1px solid var(--border);
+      padding: 16px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1.2rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .brand-symbol {
+      width: 28px;
+      height: 28px;
+      background-color: var(--card);
+      color: #38BDF8;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.9rem;
+      font-weight: bold;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+
+    .status-pill {
+      font-size: 0.8rem;
+      color: var(--muted);
+      background-color: var(--bg);
+      border: 1px solid var(--border);
+      padding: 6px 14px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #10B981;
+    }
+
+    /* Layout Main Wrapper */
+    main {
+      max-width: 1280px;
+      width: 100%;
+      margin: 32px auto;
+      padding: 0 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 32px;
+    }
+
+    /* Hero Banner Section */
+    .hero-banner {
+      text-align: center;
+      margin: 12px 0 8px 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .hero-title {
+      font-size: 3.2rem;
+      font-weight: 700;
+      color: #0D0E12;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+
+    .hero-gradient-text {
+      background: linear-gradient(90deg, #10B981 0%, #38BDF8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      display: inline-block;
+    }
+
+    .hero-subtitle {
+      font-size: 1.05rem;
+      color: var(--muted);
+      max-width: 580px;
+      margin-top: 14px;
+      line-height: 1.5;
+      font-weight: 400;
+    }
+
+    /* Metric Cards Bar */
+    .metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .metric-card {
+      background-color: #FFFFFF;
+      border: 1px solid var(--border);
+      padding: 20px;
+      border-radius: 12px;
+    }
+
+    .metric-label {
+      font-size: 0.75rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 6px;
+    }
+
+    .metric-value {
+      font-size: 1.8rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .metric-value.highlight {
+      color: var(--accent);
+    }
+
+    /* Primary Interactive Section */
+    .proxy-workspace {
+      display: grid;
+      grid-template-columns: 1.2fr 0.8fr;
+      gap: 24px;
+    }
+
+    @media (max-width: 868px) {
+      .proxy-workspace {
+        grid-template-columns: 1fr;
+      }
+      .hero-title {
+        font-size: 2.2rem;
+      }
+    }
+
+    /* Input Console Container */
+    .claude-card {
+      background-color: #FFFFFF;
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      padding: 20px;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.03);
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      min-height: 180px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .claude-card:focus-within {
+      border-color: var(--accent);
+      box-shadow: 0 4px 24px rgba(2, 132, 199, 0.12);
+    }
+
+    .claude-textarea {
+      width: 100%;
+      height: 90px;
+      border: none;
+      outline: none;
+      font-family: var(--font);
+      font-size: 1rem;
+      color: var(--text);
+      resize: none;
+      background: transparent;
+    }
+
+    .claude-textarea::placeholder {
+      color: var(--muted);
+    }
+
+    /* Bottom Control Bar */
+    .claude-bottom-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding-top: 12px;
+      border-top: 1px solid #F0F0F0;
+    }
+
+    .bar-left, .bar-right {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .compression-select {
+      background-color: var(--bg);
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 0.8rem;
+      padding: 6px 12px;
+      border-radius: 16px;
+      outline: none;
+      cursor: pointer;
+      transition: border-color 0.2s ease;
+    }
+
+    .compression-select:hover {
+      border-color: var(--accent);
+    }
+
+    .btn-mic {
+      background: none;
+      border: 1px solid transparent;
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      transition: all 0.2s ease;
+      padding: 0;
+    }
+
+    .btn-mic svg {
+      width: 18px;
+      height: 18px;
+      stroke: var(--text);
+      stroke-width: 2;
+      fill: none;
+      transition: stroke 0.2s ease;
+    }
+
+    .btn-mic:hover {
+      background-color: var(--bg);
+    }
+
+    .btn-mic.listening {
+      background-color: #FEE2E2;
+      border-color: #FCA5A5;
+      animation: pulse 1.5s infinite;
+    }
+
+    .btn-mic.listening svg {
+      stroke: #EF4444;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); }
+      50% { transform: scale(1.1); }
+      100% { transform: scale(1); }
+    }
+
+    .btn-send {
+      background-color: var(--card);
+      color: #FFFFFF;
+      border: none;
+      width: 36px;
+      height: 36px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 0.9rem;
+      transition: background-color 0.2s ease, transform 0.1s ease;
+    }
+
+    .btn-send:hover {
+      background-color: var(--accent);
+      transform: scale(1.05);
+    }
+
+    /* Preset Pills */
+    .preset-pills {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 16px;
+      justify-content: center;
+    }
+
+    .pill-btn {
+      background-color: #FFFFFF;
+      border: 1px solid var(--border);
+      color: var(--text);
+      font-family: var(--font);
+      font-size: 0.82rem;
+      padding: 8px 16px;
+      border-radius: 20px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s ease;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.02);
+    }
+
+    .pill-btn:hover {
+      background-color: var(--card);
+      color: #FFFFFF;
+      border-color: var(--card);
+    }
+
+    /* Right Output Card */
+    .card-panel {
+      background-color: #FFFFFF;
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      padding: 24px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 4px 24px rgba(0, 0, 0, 0.03);
+    }
+
+    .panel-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .response-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+
+    .badge {
+      font-size: 0.75rem;
+      padding: 4px 10px;
+      border-radius: 12px;
+      font-weight: 700;
+    }
+
+    .badge-hit {
+      background-color: #D1FAE5;
+      color: #059669;
+      border: 1px solid #A7F3D0;
+    }
+
+    .badge-miss {
+      background-color: #E0F2FE;
+      color: #0284C7;
+      border: 1px solid #BAE6FD;
+    }
+
+    .response-body {
+      background-color: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      min-height: 160px;
+      font-size: 0.88rem;
+      color: var(--text);
+      white-space: pre-wrap;
+    }
+
+    .response-meta {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 16px;
+      font-size: 0.8rem;
+      color: var(--muted);
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+
+    .meta-val {
+      color: var(--text);
+      font-weight: 700;
+    }
+
+    /* Activity Stream Table */
+    .history-card {
+      background-color: #FFFFFF;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 24px;
+    }
+
+    .table-container {
+      overflow-x: auto;
+      margin-top: 16px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      text-align: left;
+      font-size: 0.82rem;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--text);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-symbol">ϟ</div> ProxyLLM
+    </div>
+    <div class="status-pill">
+      <span class="dot"></span> Proxy Endpoint: Active (Groq Llama-3.1)
+    </div>
+  </header>
+
+  <main>
+    <!-- Hero Banner -->
+    <div class="hero-banner">
+      <div class="hero-title">
+        Optimize Every Prompt.<br>
+        <span class="hero-gradient-text">Reduce Every Cost.</span>
+      </div>
+      <p class="hero-subtitle">
+        Compress prompts intelligently while reducing LLM costs without sacrificing accuracy.
+      </p>
+    </div>
+
+    <!-- Live Telemetry -->
+    <section class="metrics-grid">
+      <div class="metric-card">
+        <div class="metric-label">Total Requests</div>
+        <div id="m-requests" class="metric-value">0</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Cache Hit Rate</div>
+        <div id="m-hitrate" class="metric-value highlight">0.0%</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Money Saved</div>
+        <div id="m-savings" class="metric-value">$0.000</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Avg Response Time</div>
+        <div id="m-latency" class="metric-value">0ms</div>
+      </div>
+    </section>
+
+    <!-- Playground Workspace -->
+    <section class="proxy-workspace">
+      
+      <!-- Query Console -->
+      <div>
+        <form id="proxy-form">
+          <div class="claude-card">
+            <textarea id="prompt-input" class="claude-textarea" placeholder="Ask anything..." required></textarea>
+
+            <div class="claude-bottom-bar">
+              <!-- Left Side: Compression Dropdown -->
+              <div class="bar-left">
+                <select id="compression-rate" class="compression-select" title="Target Compression Ratio">
+                  <option value="0.3">Compression: Medium (30%)</option>
+                  <option value="0.5">Compression: Light (50%)</option>
+                  <option value="0.8">Compression: Aggressive (80%)</option>
+                </select>
+              </div>
+
+              <!-- Right Side: Microphone & Send Button -->
+              <div class="bar-right">
+                <button type="button" id="mic-btn" class="btn-mic" title="Click to speak">
+                  <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+                    <rect x="9" y="2" width="6" height="12" rx="3"></rect>
+                    <path d="M5 10a7 7 0 0 0 14 0"></path>
+                    <line x1="12" y1="17" x2="12" y2="21"></line>
+                  </svg>
+                </button>
+
+                <button type="submit" id="submit-btn" class="btn-send" title="Send Request">➔</button>
+              </div>
+            </div>
+          </div>
+        </form>
+
+        <!-- Preset Recommendation Pills -->
+        <div class="preset-pills">
+          <button class="pill-btn" onclick="generateTopicQuestion()">
+            <span>📌</span> Suggested Question
+          </button>
+          <button class="pill-btn" onclick="generateSemanticRewordFromHistory()">
+            <span>🎯</span> Semantic Reword
+          </button>
+          <button class="pill-btn" onclick="setPrompt('You are an expert software architecture consultant reviewing a complex distributed system. The system handles real-time financial transactions across multiple global regions. Recently, the operations team noticed elevated latency during peak trading hours. Your goal is to analyze the system architecture and propose performance optimizations.')">
+            <span>🗜️</span> Long Compression Prompt
+          </button>
+        </div>
+      </div>
+
+      <!-- Output Terminal Panel -->
+      <div class="card-panel">
+        <div>
+          <div class="response-header">
+            <div class="panel-title">Proxy Response</div>
+            <div id="result-badge" class="badge badge-miss" style="display: none;">MISSED</div>
+          </div>
+
+          <div id="response-output" class="response-body" style="color: var(--muted);">
+            Query output will appear here..
+          </div>
+        </div>
+
+        <div id="meta-container" class="response-meta" style="display: none;">
+          <div>Latency: <span id="meta-time" class="meta-val">-- ms</span></div>
+          <div>Savings: <span id="meta-saved" class="meta-val">$0.000</span></div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Activity Stream Table -->
+    <section class="history-card">
+      <div class="panel-title" style="color: var(--text);">Request Activity Stream</div>
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Time Stamp</th>
+              <th>User Query</th>
+              <th>Cache Status</th>
+              <th>Tokens Before</th>
+              <th>Tokens After</th>
+              <th>Tokens Saved</th>
+              <th>Compression Rate</th>
+              <th>Money Saved</th>
+            </tr>
+          </thead>
+          <tbody id="history-rows">
+            <tr id="empty-row">
+              <td colspan="8" style="color: var(--muted); text-align: center;">No requests processed yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <!-- Interactive Script -->
+  <script>
+    const API_ENDPOINT = "http://localhost:8000/query";
+
+    let totalRequests = 0;
+    let cacheHits = 0;
+    let totalSaved = 0.0;
+    let cumulativeLatency = 0.0;
+
+    const historyList = [];
+
+    const topicQuestions = [
+      "Explain reinforcement learning with Q-learning.",
+      "How do deep learning neural networks function?",
+      "Explain natural language processing algorithms.",
+      "What is the difference between supervised and unsupervised learning?",
+      "How does computer vision detect objects in images?",
+      "Define overfitting in machine learning and how to prevent it.",
+      "What are the key components of a convolutional neural network?",
+    ];
+    let topicIndex = 0;
+
+    const promptInput = document.getElementById("prompt-input");
+
+    function setPrompt(text) {
+      promptInput.value = text;
+    }
+
+    function generateTopicQuestion() {
+      const selected = topicQuestions[topicIndex % topicQuestions.length];
+      topicIndex++;
+      setPrompt(selected);
+    }
+
+    function generateSemanticRewordFromHistory() {
+      if (historyList.length === 0) {
+        alert("No query history found yet! Please run a prompt first before attempting a semantic reword.");
+        return;
+      }
+
+      const lastPrompt = historyList[0];
+
+      let reworded = "";
+      if (lastPrompt.toLowerCase().includes("machine learning")) {
+        reworded = "Can you explain the concepts behind machine learning?";
+      } else if (lastPrompt.toLowerCase().includes("deep learning")) {
+        reworded = "Explain how deep neural networks operate.";
+      } else if (lastPrompt.toLowerCase().includes("natural language")) {
+        reworded = "How does NLP process human language?";
+      } else if (lastPrompt.toLowerCase().includes("artificial intelligence")) {
+        reworded = "Explain artificial intelligence in simple terms.";
+      } else {
+        reworded = `Can you describe ${lastPrompt}?`;
+      }
+
+      setPrompt(reworded);
+    }
+
+    // Speech Recognition
+    const micBtn = document.getElementById("mic-btn");
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.lang = "en-US";
+
+      let isListening = false;
+
+      micBtn.addEventListener("click", () => {
+        if (!isListening) {
+          recognition.start();
+        } else {
+          recognition.stop();
+        }
+      });
+
+      recognition.onstart = () => {
+        isListening = true;
+        micBtn.classList.add("listening");
+        micBtn.title = "Listening... Click to stop.";
+      };
+
+      recognition.onresult = (event) => {
+        let transcript = "";
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          transcript += event.results[i][0].transcript;
+        }
+        if (transcript.trim()) {
+          promptInput.value = transcript;
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        recognition.stop();
+      };
+
+      recognition.onend = () => {
+        isListening = false;
+        micBtn.classList.remove("listening");
+        micBtn.title = "Click to speak";
+      };
+    } else {
+      micBtn.style.display = "none";
+    }
+
+    // Submit Handler
+    document.getElementById("proxy-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const question = promptInput.value.trim();
+      const rate = parseFloat(document.getElementById("compression-rate").value) || 0.3;
+      if (!question) return;
+
+      const submitBtn = document.getElementById("submit-btn");
+      submitBtn.disabled = true;
+      submitBtn.innerText = "⏳";
+
+      try {
+        const response = await fetch(API_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question, compression_rate: rate })
+        });
+
+        if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+        
+        const data = await response.json();
+        
+        historyList.unshift(question);
+
+        renderResult(data);
+        updateTelemetry(data);
+        appendHistoryRow(question, data, rate);
+
+      } catch (err) {
+        document.getElementById("response-output").innerHTML = 
+          `<span style="color: #EF4444;">Error connecting to FastAPI backend (localhost:8000). Ensure main.py is running.</span>`;
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerText = "➔";
+      }
+    });
+
+    function renderResult(data) {
+      const badge = document.getElementById("result-badge");
+      const output = document.getElementById("response-output");
+      const meta = document.getElementById("meta-container");
+
+      badge.style.display = "inline-block";
+      meta.style.display = "flex";
+
+      if (data.cache_hit) {
+        badge.className = "badge badge-hit";
+        badge.innerText = "⚡ HIT";
+      } else {
+        badge.className = "badge badge-miss";
+        badge.innerText = "🌐 MISSED";
+      }
+
+      output.style.color = "var(--text)";
+      output.innerText = data.answer;
+
+      document.getElementById("meta-time").innerText = `${data.response_time_ms} ms`;
+      document.getElementById("meta-saved").innerText = `$${(data.cache_hit ? 0.002 : 0.000).toFixed(3)}`;
+    }
+
+    function updateTelemetry(data) {
+      totalRequests++;
+      if (data.cache_hit) {
+        cacheHits++;
+        totalSaved += 0.002;
+      }
+      cumulativeLatency += data.response_time_ms;
+
+      const hitRate = ((cacheHits / totalRequests) * 100).toFixed(1);
+      const avgLatency = (cumulativeLatency / totalRequests).toFixed(0);
+
+      document.getElementById("m-requests").innerText = totalRequests;
+      document.getElementById("m-hitrate").innerText = `${hitRate}%`;
+      document.getElementById("m-savings").innerText = `$${totalSaved.toFixed(3)}`;
+      document.getElementById("m-latency").innerText = `${avgLatency}ms`;
+    }
+
+    function appendHistoryRow(question, data, compressionRate) {
+      const emptyRow = document.getElementById("empty-row");
+      if (emptyRow) emptyRow.remove();
+
+      const tbody = document.getElementById("history-rows");
+      const row = document.createElement("tr");
+
+      const timestampStr = new Date().toLocaleTimeString();
+
+      const words = question.trim().split(/\s+/).filter(w => w.length > 0).length;
+      const tokensBefore = Math.ceil(words * 1.33);
+      
+      let tokensAfter = tokensBefore;
+      let tokensSaved = 0;
+      let moneySaved = 0.0;
+
+      if (data.cache_hit) {
+        tokensSaved = tokensBefore;
+        tokensAfter = 0;
+        moneySaved = 0.002;
+      } else {
+        tokensAfter = Math.ceil(tokensBefore * (1 - compressionRate));
+        tokensSaved = Math.max(0, tokensBefore - tokensAfter);
+        moneySaved = (tokensSaved / 1000) * 0.0015;
+      }
+
+      const statusHtml = data.cache_hit 
+        ? `<span style="color: #059669; font-weight:700;">⚡ HIT</span>` 
+        : `<span style="color: var(--accent); font-weight:700;">🌐 MISSED</span>`;
+
+      const ratePct = `${Math.round(compressionRate * 100)}%`;
+
+      row.innerHTML = `
+        <td style="color: var(--muted);">${timestampStr}</td>
+        <td style="max-width: 220px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;" title="${question}">${question}</td>
+        <td>${statusHtml}</td>
+        <td>${tokensBefore}</td>
+        <td>${tokensAfter}</td>
+        <td style="color: #059669; font-weight: 700;">${tokensSaved}</td>
+        <td>${ratePct}</td>
+        <td style="color: var(--accent); font-weight: 700;">$${moneySaved.toFixed(4)}</td>
+      `;
+
+      tbody.insertBefore(row, tbody.firstChild);
+    }
+  </script>
+</body>
+</html>
